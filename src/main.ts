@@ -1,27 +1,21 @@
-// File: main.ts
-import { PDFDocument, StandardFonts } from "https://cdn.skypack.dev/pdf-lib";
-import { ConnectConfigWithAuthentication, SmtpClient } from "https://deno.land/x/smtp/mod.ts";
-import { openKv } from "https://deno.land/x/kv@0.1.1/mod.ts";
+import {
+  PDFDocument,
+  StandardFonts,
+} from 'https://cdn.skypack.dev/pdf-lib@^1.11.1?dts';
+import { SmtpClient } from "https://deno.land/x/smtp@v0.7.0/mod.ts";
+
 import { KoFiData } from "./KoFiData.dto.ts";
-import { SendConfig } from "https://deno.land/x/smtp@v0.7.0/config.ts";
 
-const kv = await openKv();
+const kv = await Deno.openKv();
 
-async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
+async function nextBelegnummer(): Promise<string> {
+  const last = (await kv.get<number>(["lastBelegnummer"])).value ?? 0;
+  const next = last + 1;
+  await kv.set(["lastBelegnummer"], next);
+  return `SPENDE-${new Date().getFullYear()}-${String(next).padStart(3, "0")}`;
+}
 
-  const body = await req.json();
-  const data: KoFiData = body;
-
-  // Fortlaufende Belegnummer holen & erhöhen
-  const belegKey = ["belegnummer", new Date().getFullYear()];
-  const counter = (await kv.get<number>(belegKey)).value ?? 0;
-  const belegNummer = `EB-${new Date().getFullYear()}-${String(counter + 1).padStart(3, "0")}`;
-  await kv.set(belegKey, counter + 1);
-
-  // PDF erstellen
+async function createPdf(data: KoFiData, belegNummer: string): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595.28, 841.89]); // DIN A4
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -44,7 +38,18 @@ async function handler(req: Request): Promise<Response> {
   drawText(`Nachricht: ${data.message || "-"}`, 50, yStart - 100);
 
   const pdfBytes = await pdfDoc.save();
+  return pdfBytes;
+}
 
+function createPdfDownloadLink(req: Request, belegNummer: string) {
+  const url = new URL(req.url);
+  const host = req.headers.get("host");
+  const prot = url.protocol === "https:" || url.hostname === "localhost" ? "https" : "http";
+  const belegUrl = `${prot}://${host}/beleg?id=${belegNummer}`;
+  return belegUrl
+}
+
+async function sendEmail(belegNummer: string, downloadLink: string): Promise<void> {
   // PDF als Attachment per Mail versenden
   const client = new SmtpClient();
   await client.connect({
@@ -57,25 +62,52 @@ async function handler(req: Request): Promise<Response> {
   await client.send({
     from: "noreply@codelution.de",
     to: "rechnungseingang@codelution.de",
-    subject: `Spendenbeleg Eigenbeleg ${belegNummer}`,
-    content: "Im Anhang finden Sie Ihren Eigenbeleg.",
-    attachments: [
-      {
-        content: pdfBytes,
-        filename: `KoFi-${belegNummer}.pdf`,
-        contentType: "application/pdf",
-      },
-    ],
+    subject: `Spendenbeleg Nr: '${belegNummer}' erstellt`,
+    content: "Es wurde ein neuer Spendenbeleg erstellt. Download-Link: " + downloadLink,
   });
 
   await client.close();
+}
 
-  return new Response(`Beleg ${belegNummer} erstellt und versendet.`, {
-    status: 200,
-  });
+async function handler(req: Request): Promise<Response> {
+  if (req.method === "POST") {
+    const body = await req.json();
+    const data: KoFiData = body;
+
+    const belegNummer = await nextBelegnummer();
+    const pdfBytes = createPdf(data, belegNummer);
+    await savePdf(belegNummer, pdfBytes);
+    const downloadLink = createPdfDownloadLink(req, belegNummer);
+    await sendEmail(belegNummer, downloadLink); 
+    
+    return new Response(`Beleg ${belegNummer} erstellt und versendet.`, { status: 200 });
+  }
+
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    if (url.pathname !== "/beleg") return new Response("Not Found", { status: 404 });
+
+    const id = url.searchParams.get("id");
+    if (!id) return new Response("Missing ID", { status: 400 });
+
+    const result = await kv.get<Uint8Array>(["pdf", id]);
+    if (!result.value) return new Response("Beleg nicht gefunden", { status: 404 });
+
+    return new Response(result.value, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename=Beleg-${id}.pdf`,
+      },
+    });
+  }
+
+  return new Response("Method not supported", { status: 405 });
 }
 
 Deno.serve(handler);
 
 
 
+async function savePdf(belegNummer: string, pdfBytes: Promise<Uint8Array>) {
+  await kv.set(["pdf", belegNummer], pdfBytes);
+}
