@@ -92,20 +92,50 @@ async function handler(req: Request): Promise<Response> {
 
   if (req.method === "GET") {
     const url = new URL(req.url);
-    if (url.pathname !== "/beleg") return new Response("Not Found", { status: 404 });
 
-    const id = url.searchParams.get("id");
-    if (!id) return new Response("Missing ID", { status: 400 });
+    if (url.pathname === "/admin") {
+      const entries = kv.list<Uint8Array>({ prefix: ["pdf"] });
+      const links: string[] = [];
 
-    const result = await kv.get<Uint8Array>(["pdf", id]);
-    if (!result.value) return new Response("Beleg nicht gefunden", { status: 404 });
+      for await (const entry of entries) {
+        const id = entry.key[1].toString(); // ["pdf", "EB-2025-001"]
+        links.push('<li><a href="/beleg?id='+id+'" target="_blank">'+id+'</a></li>');
+      }
 
-    return new Response(result.value, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename=Beleg-${id}.pdf`,
-      },
-    });
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Beleg-Übersicht</title>
+          </head>
+          <body>
+            <h1>Alle gespeicherten Belege</h1>
+            <ul>${links.join("")}</ul>
+          </body>
+        </html>
+      `;
+      return new Response(html, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if (url.pathname === "/beleg") {
+      const id = url.searchParams.get("id");
+      if (!id) return new Response("Missing ID", { status: 400 });
+
+      const result = await kv.get<Uint8Array>(["pdf", id]);
+      if (!result.value) return new Response("Beleg nicht gefunden", { status: 404 });
+
+      return new Response(result.value, {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename=Beleg-${id}.pdf`,
+        },
+      });
+    }
+
+    return new Response("Not Found", { status: 404 });
   }
 
   return new Response("Method not supported", { status: 405 });
