@@ -76,11 +76,10 @@ async function savePdf(belegNummer: string, pdfBytes: Promise<Uint8Array>) {
 async function handler(req: Request): Promise<Response> {
   if (req.method === "POST") {
     let bodyText = await req.text();
-    // Remove "data =" and parse the JSON
-    if (bodyText.trim().startsWith("data")) {
-      bodyText = bodyText.replace(/^data\s*=\s*/, "");
-    }
-    const data: KoFiData = JSON.parse(bodyText);
+    // bodyText is application/x-www-form-urlencoded
+    // decode and parse the data propertys value as json
+    const body = new URLSearchParams(bodyText);
+    const data: KoFiData = JSON.parse(body.get("data") || "{}");
 
     const belegNummer = await nextBelegnummer();
     const pdfBytes = createPdf(data, belegNummer);
