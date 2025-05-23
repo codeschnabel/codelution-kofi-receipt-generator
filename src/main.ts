@@ -84,8 +84,8 @@ async function handler(req: Request): Promise<Response> {
     const belegNummer = await nextBelegnummer();
     const pdfBytes = await createPdf(data, belegNummer);
     await savePdf(belegNummer, pdfBytes);
-    const downloadLink = createPdfDownloadLink(req, belegNummer);
-    await sendEmail(belegNummer, downloadLink); 
+    // const downloadLink = createPdfDownloadLink(req, belegNummer);
+    // await sendEmail(belegNummer, downloadLink); 
     
     return new Response(`Beleg ${belegNummer} erstellt und versendet.`, { status: 200 });
   }
