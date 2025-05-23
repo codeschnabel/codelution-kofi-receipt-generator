@@ -50,18 +50,17 @@ function createPdfDownloadLink(req: Request, belegNummer: string) {
 }
 
 async function sendEmail(belegNummer: string, downloadLink: string): Promise<void> {
-  // PDF als Attachment per Mail versenden
   const client = new SmtpClient();
   await client.connect({
-    hostname: "smtp.yourhost.com",
-    port: 465,
-    username: "your@email.com",
-    password: "yourPassword",
+    hostname: Deno.env.get("SMTP_HOSTNAME") ?? "",
+    port: Number(Deno.env.get("SMTP_PORT") ?? "465"),
+    username: Deno.env.get("SMTP_USERNAME") ?? "",
+    password: Deno.env.get("SMTP_PASSWORD") ?? "",
   });
 
   await client.send({
-    from: "noreply@codelution.de",
-    to: "rechnungseingang@codelution.de",
+    from: Deno.env.get("EMAIL_SENDER") ?? "",
+    to: Deno.env.get("EMAIL_RECEIVER") ?? "",
     subject: `Spendenbeleg Nr: '${belegNummer}' erstellt`,
     content: "Es wurde ein neuer Spendenbeleg erstellt. Download-Link: " + downloadLink,
   });
