@@ -68,7 +68,7 @@ async function sendEmail(belegNummer: string, downloadLink: string): Promise<voi
   await client.close();
 }
 
-async function savePdf(belegNummer: string, pdfBytes: Promise<Uint8Array>) {
+async function savePdf(belegNummer: string, pdfBytes: Uint8Array) {
   await kv.set(["pdf", belegNummer], pdfBytes);
 }
 
@@ -82,7 +82,7 @@ async function handler(req: Request): Promise<Response> {
     const data: KoFiData = JSON.parse(body.get("data") || "{}");
 
     const belegNummer = await nextBelegnummer();
-    const pdfBytes = createPdf(data, belegNummer);
+    const pdfBytes = await createPdf(data, belegNummer);
     await savePdf(belegNummer, pdfBytes);
     const downloadLink = createPdfDownloadLink(req, belegNummer);
     await sendEmail(belegNummer, downloadLink); 
