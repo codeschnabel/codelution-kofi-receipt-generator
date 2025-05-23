@@ -68,10 +68,19 @@ async function sendEmail(belegNummer: string, downloadLink: string): Promise<voi
   await client.close();
 }
 
+async function savePdf(belegNummer: string, pdfBytes: Promise<Uint8Array>) {
+  await kv.set(["pdf", belegNummer], pdfBytes);
+}
+
+
 async function handler(req: Request): Promise<Response> {
   if (req.method === "POST") {
-    const body = await req.json();
-    const data: KoFiData = body;
+    let bodyText = await req.text();
+    // Remove "data =" and parse the JSON
+    if (bodyText.trim().startsWith("data")) {
+      bodyText = bodyText.replace(/^data\s*=\s*/, "");
+    }
+    const data: KoFiData = JSON.parse(bodyText);
 
     const belegNummer = await nextBelegnummer();
     const pdfBytes = createPdf(data, belegNummer);
@@ -104,9 +113,3 @@ async function handler(req: Request): Promise<Response> {
 }
 
 Deno.serve(handler);
-
-
-
-async function savePdf(belegNummer: string, pdfBytes: Promise<Uint8Array>) {
-  await kv.set(["pdf", belegNummer], pdfBytes);
-}
