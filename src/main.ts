@@ -12,10 +12,10 @@ for await (const entry of kv.list({ prefix: ["lastBelegnummer"] })) {
   console.log("Deleted", entry.key);
 }
 
-for await (const entry of kv.list({ prefix: ["pdf"] })) {
-  await kv.delete(entry.key);
-  console.log("Deleted", entry.key);
-}
+// for await (const entry of kv.list({ prefix: ["pdf"] })) {
+//   await kv.delete(entry.key);
+//   console.log("Deleted", entry.key);
+// }
 
 console.log("KV cleared.");
 
